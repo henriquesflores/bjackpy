@@ -69,8 +69,8 @@ def clear_screen() -> None:
 def render(game: Game) -> None:
     clear_screen()
     print(f"Deck has {len(game.deck)} cards left.\n")
-    str_hand = "|" + "| |".join(game.hands[-1]) + "|"
-    print("\tDealer:\t" + str_hand + f" ({game.hand_values[-1]})")
+    str_hand = "|" + "| |".join(game.hands[0]) + "|"
+    print("\tDealer:\t" + str_hand + f" ({game.hand_values[0]})")
     print("")
     for player in game.players[1:]:
         if game.alive[player]:
@@ -127,12 +127,11 @@ def update_and_render(game: Game) -> None:
         maybe_card = UserInput.map[action](game.deck, 1)
         if maybe_card is not None: 
             card = maybe_card[0]
-            game.hands[player].append(card)
-            game.update_hand_value(player)
+            game.hands[0].append(card)
+            game.update_hand_value(0)
         else:
             break
  
-             
 def main(argv: List[str]) -> int: 
     
     random.seed(2)
