@@ -22,7 +22,7 @@ def make_deck(N: int) -> List[str]:
     return deck
 
 # NOTE (Henrique): This function alters deck state
-def give_hand(deck: List[str], size: int) -> List[str]:
+def draw_hand(deck: List[str], size: int) -> List[str]:
     hand_indices = random.sample(range(len(deck) - 1), size)
     return [deck.pop(index) for index in hand_indices]
 
@@ -42,22 +42,25 @@ def eval_hand(hand: List[str]) -> int:
     return hand_value 
 
 class Game: 
-    def __init__(self, players: int, decks: List[str]):
+    def __init__(self, players: int, decks: List[str], initial_cash: List[float]):
         self.players = list(range(players))
-        self.deck = decks
         self.alive = [True] * players 
+        self.deck = decks
+
         self.hands = [None] * players 
-        self.hand_values = [None] * players 
+        self.values = [None] * players 
+        self.money = [None] * players
         for player in self.players: 
-            self.hands[player] = []
-            self.hand_values[player] = []
+            self.hands[player] = ["x", "x"]
+            self.values[player] = 0
+            self.money[player] = initial_cash[player] 
 
     def update_hand_value(self, player: int) -> None:
-        self.hand_values[player] = eval_hand(self.hands[player])
+        self.values[player] = eval_hand(self.hands[player])
         return None
     
     def is_bust(self, player: int) -> bool:
-        if self.hand_values[player] > 21:
+        if self.values[player] > 21:
             self.alive[player] = False
         
         return self.alive[player]
@@ -70,30 +73,30 @@ def render(game: Game) -> None:
     clear_screen()
     print(f"Deck has {len(game.deck)} cards left.\n")
     str_hand = "|" + "| |".join(game.hands[0]) + "|"
-    print("\tDealer:\t" + str_hand + f" ({game.hand_values[0]})")
+    print("\tDealer:\t" + str_hand + f" ({game.values[0]})")
     print("")
     for player in game.players[1:]:
         if game.alive[player]:
             str_hand = "|" + "| |".join(game.hands[player]) + "|"
-            print(f"\tPlayer {player}: " + str_hand + f" ({game.hand_values[player]})")
+            print(f"\tPlayer {player}: " + str_hand + f" ({game.values[player]})")
         else:
             str_hand = "|" + "| |".join(game.hands[player]) + "|"
-            print("\t(BUST!) " + f"Player {player}: " + str_hand + f" ({game.hand_values[player]})")
+            print("\t(BUST!) " + f"Player {player}: " + str_hand + f" ({game.values[player]})")
     return None 
 
 # NOTE (Henrique): 
 # h -> hit
 # s -> stop
 class UserInput:
-    msg = "{player}: H (Hit), S (Stop)"
-    map = {"h": give_hand, "s": lambda *args: None}
+    msg = "{player}: H (Hit), S (Stop): "
+    map = {"h": draw_hand, "s": lambda *args: None, "q": lambda *args: sys.exit(0)}
     actions = "".join(map.keys())
 
     @staticmethod
     def prompt_actions(player: int) -> None:
         name = "Dealer" if player == 0 else f"Player {player}"
         print("")
-        print(UserInput.msg.format(player = name))
+        print(UserInput.msg.format(player = name), end = " ")
         return None
 
     @staticmethod 
@@ -106,8 +109,23 @@ class UserInput:
             else:
                 return action.lower()
 
+def ask_for_bets() -> None:
+    size = input()
+    return None
+
 def update_and_render(game: Game) -> None:
+    # TODO (Henrique): Before first round. There should be a round of bets 
+    render(game)
+    ask_for_bets()
+    for player in game.players:
+        game.hands[player] = draw_hand(game.deck, 2)
+        game.values[player] = eval_hand(game.hands[player])
+        if len(game.deck) < 2:
+            print("Deck is empty.")
+            break
+
     # TODO (Henrique): Need to check if player is bust and remove from subsequent rounds
+    # TODO (Henrique): Command messages to exit
     player = 1
     while True:
         render(game)
@@ -131,21 +149,12 @@ def update_and_render(game: Game) -> None:
             game.update_hand_value(0)
         else:
             break
- 
+
 def main(argv: List[str]) -> int: 
     
     random.seed(2)
-    game = Game(players = 3, decks = make_deck(1))
-
-    # TODO (Henrique): Before first round. There should be a round of bets 
-    for player in game.players:
-        game.hands[player] = give_hand(game.deck, 2)
-        game.hand_values[player] = eval_hand(game.hands[player])
-        if len(game.deck) < 2:
-            print("Deck is empty.")
-            break
-
-    render(game)
+    cashs = [10.3, 4.8, 2.1]
+    game = Game(players = 3, decks = make_deck(1), initial_cash = cashs)
     update_and_render(game)
 
     return 0
