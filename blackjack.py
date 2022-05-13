@@ -76,15 +76,13 @@ class Game:
             self.alive[player] = False
 
     def next_available_player(self, player: int) -> int:
-        # TODO (Henrique): There is a bug in this function
-        pdb.set_trace()
+        if player == 0:
+            return -1
+        
         next_player = self.ordered_players[player]
         if self.alive[next_player]:
             return next_player
-        else: 
-            return None
         
-
 def clear_screen() -> None:
     os.system("cls" if os.name == "nt" else "clear")
     return None
@@ -113,7 +111,7 @@ def validate_bet(value: int, actions: List[int]) -> Union[int, None]:
 class UserInput:
     cash_msg = "Player {player}, enter initial cash: "
     
-    hit_msg = "{player} -- H (Hit), S (Stop): "
+    hit_msg = "\n{player} -- H (Hit), S (Stop): "
     hit_map = {"h": draw_hand, "s": lambda *args: None, "q": lambda *args: sys.exit(0)}
     hit_actions = "".join(hit_map.keys())
     
@@ -186,6 +184,9 @@ def get_first_available_player(game: Game) -> int:
     
     return 0
 
+def eval_round(game: Game) -> None:
+    return NotImplemented
+
 def update_and_render(game: Game) -> None:
 
     clear_screen()
@@ -207,14 +208,18 @@ def update_and_render(game: Game) -> None:
             card = maybe_card[0]
             game.update_player(player, card)
             game.check_player_status(player)
-            player = game.next_available_player(player)
             render(game)
+            if not game.alive[player]:
+                player = game.next_available_player(player)
+
             if player == -1:
                 break
         else: 
             player = game.next_available_player(player)
             if player == -1:
                 break
+
+    eval_round(game)
 
 def main(argv: List[str]) -> int: 
     
