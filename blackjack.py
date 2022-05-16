@@ -1,12 +1,11 @@
 import os
 import sys
 import pdb
+import time
 import random
 from tkinter import W
 
 from typing import List, Union, Callable, Any
-
-from scipy.fftpack import shift
 
 def make_deck(N: int) -> List[str]:
     # NOTE (Henrique): [spades, diamonds, clubs, hearts]
@@ -25,6 +24,7 @@ def make_deck(N: int) -> List[str]:
     return deck
 
 # NOTE (Henrique): This function alters deck state
+# Moreover, not sure yet if we can allow resample of cards!
 def draw_hand(deck: List[str], size: int) -> List[str]:
     hand_indices = random.sample(range(len(deck) - 1), size)
     return [deck.pop(index) for index in hand_indices]
@@ -65,6 +65,13 @@ class Game:
             self.values[player] = 0
             self.money[player] = 0 
             self.bets[player] = 0
+    
+    def reset(self):
+        for player in self.players: 
+            self.hands[player] = ["x", "x"]
+            self.alive[player] = True
+            self.values[player] = 0
+            self.bets[player] = 0
 
     def update_player(self, player: int, card: str) -> None:
         self.hands[player].append(card)
@@ -82,6 +89,23 @@ class Game:
         next_player = self.ordered_players[player]
         if self.alive[next_player]:
             return next_player
+
+    def check_players_cash(self) -> None:
+        # TODO (Henrique): Update the cash by the payoff of the bet.
+        for player in self.players[1:]:
+            if self.money[player] <= 0:
+                self.alive[player] = False
+    
+    def log_round(self) -> None:
+        return NotImplemented
+    
+    def get_alive_players(self) -> List[int]:
+        alives = []
+        for player in self.players[1:]:
+            if self.alive[player]:
+                alives.append(player)
+
+        return alives 
         
 def clear_screen() -> None:
     os.system("cls" if os.name == "nt" else "clear")
@@ -97,7 +121,7 @@ def render(game: Game) -> None:
     for player in game.players[1:]:
         if game.alive[player]:
             str_hand = "|" + "| |".join(game.hands[player]) + "|"
-            print(f"\tPlayer {player} ({game.bets[player]}/{game.money[player]}): " + str_hand + f" ({game.values[player]})")
+            print(f"\tPlayer {player} ({game.bets[player]}/{game.money[player] : .2f}): " + str_hand + f" ({game.values[player]})")
         else:
             str_hand = "|" + "| |".join(game.hands[player]) + "|"
             print("\t(BUST!) " + f"Player {player}: " + str_hand + f" ({game.values[player]})")
@@ -115,7 +139,7 @@ class UserInput:
     hit_map = {"h": draw_hand, "s": lambda *args: None, "q": lambda *args: sys.exit(0)}
     hit_actions = "".join(hit_map.keys())
     
-    bet_msg = "\nPlayer {player}, Bet (0, 5c, 10c, 20c): "
+    bet_msg = "\nPlayer {player}, Bet (0, 5, 10, 20) cents: "
     bet_actions = [0, 5, 10, 20]
 
     @staticmethod
@@ -147,10 +171,10 @@ class UserInput:
         return None
 
     @staticmethod 
-    def maybe_hit(player: int) -> Callable:
+    def hit_or_stop(player: int) -> Callable:
         while True:
             UserInput.prompt_actions(player)
-            action = input()[0].lower()
+            action = input()[0].strip().lower()
             if action not in UserInput.hit_actions:
                 print("Unrecognized action!")
             else:
@@ -177,24 +201,36 @@ def ask_for_bets(game: Game) -> None:
 
     return None
 
+def no_dealer_alive(game: Game):
+    return game.alive[1:]
+
 def get_first_available_player(game: Game) -> int:
-    for index, state in enumerate(game.alive[1:], start = 1):
-        if state:
+    for index, isalive in enumerate(no_dealer_alive(game), start = 1):
+        if isalive:
             return index
     
     return 0
 
-def eval_round(game: Game) -> None:
-    return NotImplemented
+def eval_round(game: Game) -> List[int]:
+    dealer_hand = game.values[0]
+    if dealer_hand > 21:
+        winners = game.get_alive_players()
+        return winners
 
-def update_and_render(game: Game) -> None:
+    winners = []
+    for index, hand_value in enumerate(game.values[1:], start = 1):
+        if hand_value >= dealer_hand and hand_value <= 21:
+            winners.append(index)
+        else: 
+            continue
+    
+    if len(winners) == 0:
+        winners.append(0)
 
-    clear_screen()
-    ask_for_cash(game)
-    render(game)
+    return winners
 
+def play_round(game: Game) -> int:
     ask_for_bets(game)
-    render(game)
     for player in game.players:
         game.hands[player] = draw_hand(game.deck, 2)
         game.values[player] = eval_hand(game.hands[player])
@@ -202,7 +238,11 @@ def update_and_render(game: Game) -> None:
 
     player = get_first_available_player(game) 
     while True:
-        action = UserInput.maybe_hit(player)
+        render(game)
+        if sum(no_dealer_alive(game)) == 0: 
+            break 
+
+        action = UserInput.hit_or_stop(player)
         maybe_card = UserInput.hit_map[action](game.deck, 1)
         if maybe_card is not None:
             card = maybe_card[0]
@@ -211,15 +251,33 @@ def update_and_render(game: Game) -> None:
             render(game)
             if not game.alive[player]:
                 player = game.next_available_player(player)
-
-            if player == -1:
-                break
+                if player == -1:
+                    break
         else: 
             player = game.next_available_player(player)
             if player == -1:
                 break
+    
+    winner = eval_round(game)
+    return winner
 
-    eval_round(game)
+def update_and_render(game: Game) -> None:
+
+    clear_screen()
+    ask_for_cash(game)
+    
+    while True:
+        render(game)
+        winners = play_round(game)
+        for winner in winners: 
+            name = "Dealer" if winner == 0 else f"{winner}"
+            print("\n\tPlayer " + name + " won the round!")
+        time.sleep(len(winners))
+
+        game.check_players_cash()
+        # TODO (Henrique): Implement logging for game. Log file could be accepted as parameter
+        # game.log_round()
+        game.reset()
 
 def main(argv: List[str]) -> int: 
     
