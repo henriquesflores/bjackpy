@@ -3,7 +3,6 @@ import sys
 import pdb
 import time
 import random
-from tkinter import W
 
 from typing import List, Union, Callable, Any
 
@@ -24,7 +23,6 @@ def make_deck(N: int) -> List[str]:
     return deck
 
 # NOTE (Henrique): This function alters deck state
-# Moreover, not sure yet if we can allow resample of cards!
 def draw_hand(deck: List[str], size: int) -> List[str]:
     hand_indices = random.sample(range(len(deck) - 1), size)
     return [deck.pop(index) for index in hand_indices]
@@ -56,6 +54,7 @@ class Game:
         self.alive = [True] * players 
         self.deck = decks
 
+        self.reprs =  {}
         self.bets = [None] * players
         self.money = [None] * players
         self.hands = [None] * players 
@@ -65,13 +64,18 @@ class Game:
             self.values[player] = 0
             self.money[player] = 0 
             self.bets[player] = 0
+            self.reprs[player] = str(player) if player != 0 else "Dealer"
     
-    def reset(self):
+    def reset(self) -> bool:
+        if len(self.deck) < 2 * len(self.players):
+            return False
+
         for player in self.players: 
             self.hands[player] = ["x", "x"]
             self.alive[player] = True
             self.values[player] = 0
             self.bets[player] = 0
+        return True
 
     def update_player(self, player: int, card: str) -> None:
         self.hands[player].append(card)
@@ -81,6 +85,7 @@ class Game:
     def check_player_status(self, player: int) -> None:
         if self.values[player] > 21:
             self.alive[player] = False
+        return None
 
     def next_available_player(self, player: int) -> int:
         if player == 0:
@@ -95,6 +100,7 @@ class Game:
         for player in self.players[1:]:
             if self.money[player] <= 0:
                 self.alive[player] = False
+        return None
     
     def log_round(self) -> None:
         return NotImplemented
@@ -110,6 +116,9 @@ class Game:
 def clear_screen() -> None:
     os.system("cls" if os.name == "nt" else "clear")
     return None
+
+def no_dealer(game: Game):
+    return game.alive[1:]
 
 def render(game: Game) -> None:
     # TODO (Henrique): Think about how to render bet and amount
@@ -165,20 +174,19 @@ class UserInput:
                 print("Unrecognized bet amount!") 
 
     @staticmethod
-    def prompt_actions(player: int) -> None:
-        name = "Dealer" if player == 0 else f"Player {player}"
-        print(UserInput.hit_msg.format(player = name), end = " ")
+    def prompt_actions(representation: str) -> None:
+        print(UserInput.hit_msg.format(player = representation), end = " ")
         return None
 
     @staticmethod 
-    def hit_or_stop(player: int) -> Callable:
+    def hit_or_stop(player: int, reprs: List[str]) -> Callable:
         while True:
-            UserInput.prompt_actions(player)
+            UserInput.prompt_actions(reprs[player])
             action = input()[0].strip().lower()
-            if action not in UserInput.hit_actions:
-                print("Unrecognized action!")
-            else:
+            if action in UserInput.hit_actions:
                 return action.lower()
+            else:
+                print("Unrecognized action!")
 
 def ask_for_cash(game: Game) -> None:
     for player in game.players[1:]:
@@ -187,7 +195,7 @@ def ask_for_cash(game: Game) -> None:
     return None
 
 def ask_for_bets(game: Game) -> None:
-    for player in game.players[1:]:
+    for player in game.players[1:]: 
         while True:
             bet_amount = UserInput.get_bet(player)
             if bet_amount > game.money[player]:
@@ -198,17 +206,12 @@ def ask_for_bets(game: Game) -> None:
                 if bet_amount == 0:
                     game.alive[player] = False
                 break
-
     return None
 
-def no_dealer_alive(game: Game):
-    return game.alive[1:]
-
 def get_first_available_player(game: Game) -> int:
-    for index, isalive in enumerate(no_dealer_alive(game), start = 1):
+    for index, isalive in enumerate(no_dealer(game), start = 1):
         if isalive:
             return index
-    
     return 0
 
 def eval_round(game: Game) -> List[int]:
@@ -229,7 +232,7 @@ def eval_round(game: Game) -> List[int]:
 
     return winners
 
-def play_round(game: Game) -> int:
+def play_round(game: Game) -> List[int]:
     ask_for_bets(game)
     for player in game.players:
         game.hands[player] = draw_hand(game.deck, 2)
@@ -239,10 +242,10 @@ def play_round(game: Game) -> int:
     player = get_first_available_player(game) 
     while True:
         render(game)
-        if sum(no_dealer_alive(game)) == 0: 
+        if sum(no_dealer(game)) == 0: 
             break 
 
-        action = UserInput.hit_or_stop(player)
+        action = UserInput.hit_or_stop(player, game.reprs)
         maybe_card = UserInput.hit_map[action](game.deck, 1)
         if maybe_card is not None:
             card = maybe_card[0]
@@ -258,26 +261,29 @@ def play_round(game: Game) -> int:
             if player == -1:
                 break
     
-    winner = eval_round(game)
-    return winner
+    winners = eval_round(game)
+    return winners
 
 def update_and_render(game: Game) -> None:
 
     clear_screen()
-    ask_for_cash(game)
     
+    ask_for_cash(game)
     while True:
         render(game)
         winners = play_round(game)
         for winner in winners: 
-            name = "Dealer" if winner == 0 else f"{winner}"
-            print("\n\tPlayer " + name + " won the round!")
+            print("\n\tPlayer " + game.reprs[winner] + " won the round!")
         time.sleep(len(winners))
 
         game.check_players_cash()
         # TODO (Henrique): Implement logging for game. Log file could be accepted as parameter
         # game.log_round()
-        game.reset()
+        if not game.reset():
+            print("\n\tDeck size reached limit. Stoping game now.")
+            print("\tThanks for playing!")
+            time.sleep(1.5)
+            break
 
 def main(argv: List[str]) -> int: 
     
